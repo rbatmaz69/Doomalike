@@ -10,6 +10,13 @@ public class FirstPersonController : MonoBehaviour
     public float moveSpeed = 8f;
     public float jumpHeight = 1.5f;
     public float gravity = -25f;
+    public int maxJumps = 2; // 2 = Double Jump
+
+    [Header("Dash")]
+    public float dashDistance = 8f;        // Strecke eines Dashs in Metern
+    public float dashDuration = 0.18f;     // Dauer in Sekunden
+    public int maxDashCharges = 2;         // wie viele Dashes gespeichert werden
+    public float dashRechargeTime = 2f;    // Sekunden, bis eine Ladung zurueckkommt
 
     [Header("Maus")]
     public float mouseSensitivity = 0.1f;
@@ -18,10 +25,20 @@ public class FirstPersonController : MonoBehaviour
     CharacterController controller;
     Vector3 velocity;
     float pitch;
+    int jumpsLeft;
+
+    int dashCharges;
+    float dashRecharge;
+    float dashTimer;
+    Vector3 dashDirection;
+
+    // fuer das HUD spaeter
+    public int DashCharges => dashCharges;
 
     void Awake()
     {
         controller = GetComponent<CharacterController>();
+        dashCharges = maxDashCharges;
 
         if (cameraTransform == null && Camera.main != null)
             cameraTransform = Camera.main.transform;
@@ -60,16 +77,57 @@ public class FirstPersonController : MonoBehaviour
         Vector3 input = transform.right * x + transform.forward * z;
         if (input.sqrMagnitude > 1f) input.Normalize();
 
-        if (controller.isGrounded && velocity.y < 0f)
-            velocity.y = -2f;
+        // Dash: Shift druecken, in Laufrichtung (ohne Eingabe nach vorne)
+        if (kb.leftShiftKey.wasPressedThisFrame && dashCharges > 0 && dashTimer <= 0f)
+        {
+            dashDirection = input.sqrMagnitude > 0.01f ? input.normalized : transform.forward;
+            dashTimer = dashDuration;
+            dashCharges--;
+        }
 
-        if (controller.isGrounded && kb.spaceKey.wasPressedThisFrame)
+        RechargeDash();
+
+        if (dashTimer > 0f)
+        {
+            dashTimer -= Time.deltaTime;
+            velocity.y = 0f; // waehrend des Dashs schwebt man waagerecht
+            controller.Move(dashDirection * (dashDistance / dashDuration) * Time.deltaTime);
+            return;
+        }
+
+        if (controller.isGrounded)
+        {
+            jumpsLeft = maxJumps;
+            if (velocity.y < 0f) velocity.y = -2f;
+        }
+
+        // Springen: am Boden der erste Sprung, in der Luft der Double Jump
+        if (kb.spaceKey.wasPressedThisFrame && jumpsLeft > 0)
+        {
             velocity.y = Mathf.Sqrt(jumpHeight * -2f * gravity);
+            jumpsLeft--;
+        }
 
         velocity.y += gravity * Time.deltaTime;
 
         Vector3 move = input * moveSpeed + Vector3.up * velocity.y;
         controller.Move(move * Time.deltaTime);
+    }
+
+    void RechargeDash()
+    {
+        if (dashCharges >= maxDashCharges)
+        {
+            dashRecharge = 0f;
+            return;
+        }
+
+        dashRecharge += Time.deltaTime;
+        if (dashRecharge >= dashRechargeTime)
+        {
+            dashCharges++;
+            dashRecharge = 0f;
+        }
     }
 
     static void LockCursor(bool locked)
