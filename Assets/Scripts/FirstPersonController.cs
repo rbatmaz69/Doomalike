@@ -114,6 +114,14 @@ public class FirstPersonController : MonoBehaviour
         controller.Move(move * Time.deltaTime);
     }
 
+    // Wird z.B. von Jump-Pads aufgerufen: schleudert den Spieler auf die gegebene Hoehe
+    public void Launch(float height)
+    {
+        velocity.y = Mathf.Sqrt(height * -2f * gravity);
+        dashTimer = 0f;
+        jumpsLeft = maxJumps; // nach dem Pad ist ein Double Jump moeglich
+    }
+
     void RechargeDash()
     {
         if (dashCharges >= maxDashCharges)
