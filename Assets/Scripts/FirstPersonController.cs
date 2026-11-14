@@ -1,8 +1,8 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
 
-// First-Person-Controller: WASD laufen, Maus umschauen, Leertaste springen.
-// Double Jump, Dash usw. kommen in den naechsten Issues dazu.
+// First-Person-Controller: WASD laufen, Maus umschauen, Leertaste springen,
+// Double Jump, Dash, Jump-Pads (Launch) und Wand-Mechanik (halten, klettern, Wandsprung).
 [RequireComponent(typeof(CharacterController))]
 public class FirstPersonController : MonoBehaviour
 {
@@ -18,6 +18,14 @@ public class FirstPersonController : MonoBehaviour
     public int maxDashCharges = 2;         // wie viele Dashes gespeichert werden
     public float dashRechargeTime = 2f;    // Sekunden, bis eine Ladung zurueckkommt
 
+    [Header("Wand")]
+    public float climbSpeed = 4f;          // Klettergeschwindigkeit (W an der Wand)
+    public float wallStamina = 1.5f;       // Sekunden Halten/Klettern, bis man abrutscht
+    public float wallSlideSpeed = 3f;      // Rutschgeschwindigkeit ohne Stamina
+    public float wallJumpHeight = 2.5f;    // Hoehe des Wandsprungs
+    public float wallJumpPush = 9f;        // Schub von der Wand weg
+    public float pushDecay = 20f;          // wie schnell der Schub abklingt
+
     [Header("Maus")]
     public float mouseSensitivity = 0.1f;
     public Transform cameraTransform;
@@ -32,6 +40,12 @@ public class FirstPersonController : MonoBehaviour
     float dashTimer;
     Vector3 dashDirection;
 
+    // Wand
+    Vector3 wallNormal;
+    float wallContactTimer;
+    float wallTimeLeft;
+    Vector3 push; // waagerechter Schub (Wandsprung)
+
     // fuer das HUD spaeter
     public int DashCharges => dashCharges;
 
@@ -39,6 +53,7 @@ public class FirstPersonController : MonoBehaviour
     {
         controller = GetComponent<CharacterController>();
         dashCharges = maxDashCharges;
+        wallTimeLeft = wallStamina;
 
         if (cameraTransform == null && Camera.main != null)
             cameraTransform = Camera.main.transform;
@@ -98,20 +113,65 @@ public class FirstPersonController : MonoBehaviour
         if (controller.isGrounded)
         {
             jumpsLeft = maxJumps;
+            wallTimeLeft = wallStamina;
+            push = Vector3.zero;
             if (velocity.y < 0f) velocity.y = -2f;
         }
 
-        // Springen: am Boden der erste Sprung, in der Luft der Double Jump
-        if (kb.spaceKey.wasPressedThisFrame && jumpsLeft > 0)
+        // Wandkontakt kommt aus OnControllerColliderHit und gilt kurz nach
+        wallContactTimer -= Time.deltaTime;
+        bool onWall = wallContactTimer > 0f && !controller.isGrounded;
+
+        bool jumpPressed = kb.spaceKey.wasPressedThisFrame;
+
+        if (onWall && jumpPressed)
         {
+            // Wandsprung: nach oben und von der Wand weg
+            velocity.y = Mathf.Sqrt(wallJumpHeight * -2f * gravity);
+            push = wallNormal * wallJumpPush;
+            jumpsLeft = Mathf.Max(jumpsLeft, 1);
+            wallContactTimer = 0f;
+            onWall = false;
+        }
+        else if (onWall)
+        {
+            if (wallTimeLeft > 0f)
+            {
+                // Halten bzw. Klettern (W), solange Stamina da ist
+                wallTimeLeft -= Time.deltaTime;
+                velocity.y = z > 0f ? climbSpeed : 0f;
+            }
+            else
+            {
+                // Stamina leer: langsam abrutschen
+                velocity.y = Mathf.Max(velocity.y + gravity * Time.deltaTime, -wallSlideSpeed);
+            }
+        }
+        else if (jumpPressed && jumpsLeft > 0)
+        {
+            // Springen: am Boden der erste Sprung, in der Luft der Double Jump
             velocity.y = Mathf.Sqrt(jumpHeight * -2f * gravity);
             jumpsLeft--;
         }
 
-        velocity.y += gravity * Time.deltaTime;
+        if (!onWall) velocity.y += gravity * Time.deltaTime;
 
-        Vector3 move = input * moveSpeed + Vector3.up * velocity.y;
+        push = Vector3.MoveTowards(push, Vector3.zero, pushDecay * Time.deltaTime);
+
+        Vector3 move = input * moveSpeed + push + Vector3.up * velocity.y;
+        // leicht zur Wand druecken, damit der Kontakt beim Halten nicht abreisst
+        if (onWall) move -= wallNormal * 1f;
         controller.Move(move * Time.deltaTime);
+    }
+
+    // Wird vom CharacterController bei Kollisionen aufgerufen
+    void OnControllerColliderHit(ControllerColliderHit hit)
+    {
+        if (!hit.collider.CompareTag("ClimbWall")) return;
+        if (Mathf.Abs(hit.normal.y) > 0.3f) return; // nur senkrechte Flaechen
+
+        wallNormal = new Vector3(hit.normal.x, 0f, hit.normal.z).normalized;
+        wallContactTimer = 0.15f;
     }
 
     // Wird z.B. von Jump-Pads aufgerufen: schleudert den Spieler auf die gegebene Hoehe
@@ -119,6 +179,7 @@ public class FirstPersonController : MonoBehaviour
     {
         velocity.y = Mathf.Sqrt(height * -2f * gravity);
         dashTimer = 0f;
+        wallContactTimer = 0f;
         jumpsLeft = maxJumps; // nach dem Pad ist ein Double Jump moeglich
     }
 
