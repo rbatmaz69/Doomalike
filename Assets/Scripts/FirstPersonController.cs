@@ -26,6 +26,11 @@ public class FirstPersonController : MonoBehaviour
     public float wallJumpPush = 9f;        // Schub von der Wand weg
     public float pushDecay = 20f;          // wie schnell der Schub abklingt
 
+    [Header("Grappling Hook")]
+    public float grappleSpeed = 25f;        // Zuggeschwindigkeit zum Greifpunkt
+    public float grappleStopDistance = 1.5f; // ab hier loest sich der Haken
+    public float grappleMomentum = 0.4f;    // wie viel Schwung am Ende bleibt
+
     [Header("Maus")]
     public float mouseSensitivity = 0.1f;
     public Transform cameraTransform;
@@ -46,8 +51,13 @@ public class FirstPersonController : MonoBehaviour
     float wallTimeLeft;
     Vector3 push; // waagerechter Schub (Wandsprung)
 
+    // Grappling Hook
+    bool grappling;
+    Vector3 grappleTarget;
+
     // fuer das HUD spaeter
     public int DashCharges => dashCharges;
+    public bool IsGrappling => grappling;
 
     void Awake()
     {
@@ -108,6 +118,23 @@ public class FirstPersonController : MonoBehaviour
             velocity.y = 0f; // waehrend des Dashs schwebt man waagerecht
             controller.Move(dashDirection * (dashDistance / dashDuration) * Time.deltaTime);
             return;
+        }
+
+        // Haken: zum Greifpunkt ziehen, bis man nah genug ist
+        if (grappling)
+        {
+            Vector3 toTarget = grappleTarget - transform.position;
+            if (toTarget.magnitude <= grappleStopDistance)
+            {
+                StopGrapple();
+            }
+            else
+            {
+                velocity.y = 0f;
+                push = Vector3.zero;
+                controller.Move(toTarget.normalized * grappleSpeed * Time.deltaTime);
+                return;
+            }
         }
 
         if (controller.isGrounded)
@@ -174,9 +201,31 @@ public class FirstPersonController : MonoBehaviour
         wallContactTimer = 0.15f;
     }
 
+    // Wird vom GrapplingHook aufgerufen: zieht den Spieler zum Punkt
+    public void StartGrapple(Vector3 target)
+    {
+        grappleTarget = target;
+        grappling = true;
+        dashTimer = 0f;
+        wallContactTimer = 0f;
+    }
+
+    // Loest den Haken und behaelt etwas Schwung in Zugrichtung
+    public void StopGrapple()
+    {
+        if (!grappling) return;
+        grappling = false;
+
+        Vector3 dir = (grappleTarget - transform.position).normalized;
+        push = new Vector3(dir.x, 0f, dir.z) * grappleSpeed * grappleMomentum;
+        velocity.y = Mathf.Max(0f, dir.y * grappleSpeed * grappleMomentum);
+        jumpsLeft = maxJumps; // nach dem Haken ist wieder ein Sprung moeglich
+    }
+
     // Wird z.B. von Jump-Pads aufgerufen: schleudert den Spieler auf die gegebene Hoehe
     public void Launch(float height)
     {
+        grappling = false;
         velocity.y = Mathf.Sqrt(height * -2f * gravity);
         dashTimer = 0f;
         wallContactTimer = 0f;
