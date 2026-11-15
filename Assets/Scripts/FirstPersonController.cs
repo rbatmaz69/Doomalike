@@ -201,6 +201,19 @@ public class FirstPersonController : MonoBehaviour
         wallContactTimer = 0.15f;
     }
 
+    // Wird beim Respawn aufgerufen: setzt Schwung, Dash und Haken zurueck
+    public void ResetMotion()
+    {
+        velocity = Vector3.zero;
+        push = Vector3.zero;
+        dashTimer = 0f;
+        dashCharges = maxDashCharges;
+        grappling = false;
+        wallContactTimer = 0f;
+        wallTimeLeft = wallStamina;
+        jumpsLeft = maxJumps;
+    }
+
     // Wird vom GrapplingHook aufgerufen: zieht den Spieler zum Punkt
     public void StartGrapple(Vector3 target)
     {
