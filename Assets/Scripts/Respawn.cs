@@ -90,6 +90,20 @@ public class Respawn : MonoBehaviour
             $"Zeit {minutes}:{seconds:00.0}   |   R = Neustart", style);
     }
 
+    // Wird beim Spawn im Netzwerk aufgerufen: setzt den Startpunkt und stellt den Spieler dorthin
+    public void SetSpawn(Vector3 position, Quaternion rotation)
+    {
+        respawnPosition = position;
+        respawnRotation = rotation;
+        DoRespawn();
+    }
+
+    // Wird vom Kampf-Skript aufgerufen, wenn der Spieler ausgeschieden ist
+    public void ForceRespawn()
+    {
+        DoRespawn();
+    }
+
     void DoRespawn()
     {
         // CharacterController muss fuers Teleportieren kurz aus sein
